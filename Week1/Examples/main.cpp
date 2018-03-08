@@ -1,8 +1,6 @@
 #include <iostream>
 #include "Organization.h"
 
-using namespace std;
-
 int main() {
   Organization organization;
 
