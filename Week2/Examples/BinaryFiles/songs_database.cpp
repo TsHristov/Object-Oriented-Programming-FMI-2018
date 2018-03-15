@@ -16,78 +16,181 @@ struct Song {
 };
 
 // Описание:
-//     Записва един обект тип Song във файл с име `file_name`.
-int WriteSongToFile(Song& song, const char* file_name) {
-  ofstream file(file_name, ios::binary | ios::app);
+//     Записва един обект тип Song във файл с име `db_name`.
+int write_song(Song& song, const char* db_name) {
+  // ios::app - защото искаме да добавяме новия запис към базата от данни:
+  ofstream database(db_name, ios::binary | ios::app);
 
-  if(file.is_open()) {
-    // Записваме обекта song във двоичния файл:
-    file.write((const char*)&song, sizeof(Song));
+  if(database.is_open()) {
+    // Записваме обекта song в двоичния файл:
+    database.write((const char*)&song, sizeof(Song));
 
     // Проверяваме дали писането е било успешно:
-    if(file.bad()) {
-      cerr << "Writing to " << file_name << " failed\n";
+    if(database.bad()) {
+      cerr << "Writing failed in: " << db_name;
+      database.close();
       return ERROR_WRITING_FILE;
     }
 
-    file.close();
+    database.close();
     return SUCCESS;
   }
 
-  return ERROR_WRITING_FILE;
+  return ERROR_OPENING_FILE;
 }
 
 // Описание:
 //     Прочита n-тата песен записана във файла:
-int ReadSongFromFile(Song& song, const char* file_name, int n) {
-  ifstream file(file_name, ios::binary);
+int read_song(Song& song, const char* db_name, int n) {
+  ifstream database(db_name, ios::binary);
   
-  if(file.is_open()) {
+  if(database.is_open()) {
     // Позиционираме маркера за четене от файла, като
-    // прескачаме n-1 Song структури спрямо началото на файла:
-    file.seekg((n-1)*sizeof(Song), ios::beg);
-    file.read((char*)&song, sizeof(Song));
+    // прескачаме n-1 структури спрямо началото на файла:
+    database.seekg((n-1)*sizeof(Song), ios::beg);
+    database.read((char*)&song, sizeof(Song));
 
     // Проверяваме дали успешно сме прочели песен от файла:
-    if(file.bad()){
-      cerr << "Reading from " << file_name << " failed\n";
+    if(database.bad()){
+      cerr << "Reading failed in: " << db_name;
+      database.close();
       return ERROR_READING_FILE;
     }
 
-    file.close();
+    database.close();
     return SUCCESS;
   }
   
-  return ERROR_READING_FILE;
+  return ERROR_OPENING_FILE;
 }
 
 // Описание:
-//   Търси песен по нейното име в файла и ако съществува връща информация за нея:
-int SearchSongByName(Song& song, const char* file_name, char* song_name) {
-  ifstream file(file_name, ios::binary);
+//   Намира песен (ако съществува) по нейното име във файла и ако съществува връща информация за нея:
+int find_song_by_name(Song& song, const char* db_name, char* song_name) {
+  ifstream database(db_name, ios::binary);
+  
+  if(database.is_open()) {
+    while(!database.eof()) {
 
-  if(file.is_open()) {
-    while(!file.eof()) {
-      file.read((char*)&song, sizeof(Song));
+      database.read((char*)&song, sizeof(Song));
       
-      if(file.bad()) {
-	cerr << "Read failed from " << file_name << "\n";
-	file.close();
+      if(database.bad()) {
+	cerr << "Read failed in: " << db_name << "\n";
+	database.close();
 	return ERROR_READING_FILE;
       }
       
       // Ако сме намерили песента с това име:
       if(!strcmp(song.name, song_name)) {
-	file.close();
+	database.close();
 	return SUCCESS;
       }
     }
   }
-  return ERROR_READING_FILE;
+  
+  return ERROR_OPENING_FILE;
+}
+
+// Описание:
+//    Намира песента в базата от данни с най-кратка продължителност:
+int find_min_length_song(Song& song, const char* db_name) {
+  ifstream database(db_name, ios::binary);
+  
+  Song min_length_song;
+  
+  if(database.is_open()) {
+
+    database.read((char*)&song, sizeof(Song));
+
+    if (database.bad()) {
+      cerr << "Read failed in: " << db_name;
+      database.close();
+      return ERROR_READING_FILE;
+    }
+
+    min_length_song = song;
+    
+    while(!database.eof()) {
+
+      database.read((char*)&song, sizeof(Song));
+
+      if(database.bad()) {
+	cerr << "Read failed in: " << db_name;
+	database.close();
+	return ERROR_READING_FILE;
+      }
+
+      // Ако дължината на току-що прочетената песен
+      // е по-малка от до сега намерената, то това е
+      // новата песен с най-малка продължителност:
+      if(song.length < min_length_song.length) {
+	min_length_song = song;
+      }
+    }
+
+    // Тъй като връщаме резултат,
+    // чрез параметъра на функцията song,
+    // копираме намерената минимална песен в song:
+    song = min_length_song;
+
+    database.close();
+    
+    return SUCCESS;
+  }
+
+  return ERROR_OPENING_FILE;
+}
+
+// Описание:
+//    Изкарва информация за песните в базата от данни в текстови формат, с произволен разделител.
+// Връщан резултат:
+//    int - код на завършване (RETURN_CODE)
+int generate_report(const char* db_name, const char* songs_report_name, const char& delimeter = ' ') {
+  // Отваряме база от данни за четене (ifstream):
+  ifstream database(db_name, ios::binary);
+  // Отваряме текстовия файл за репорт за писане (ofstream),
+  // + ios::trunc, за да изтрие предишно съдържание на файла,
+  // ако такова съществува:
+  ofstream report(songs_report_name, ios::trunc);
+
+  if (database.is_open() && report.is_open()) {
+    // Четем базата от данни структура по структура:
+    while (!database.eof()) {
+      Song song;
+      
+      database.read((char*)&song, sizeof(Song));
+
+      if (database.eof()) {
+	break;
+      }
+      
+      if (database.bad()) {
+	cerr << "Read failed in: " << db_name;
+	database.close();
+	report.close();
+	return ERROR_READING_FILE;
+      }
+
+      // Записваме структурата в текстовия файл с подходящия разделител (delimeter):
+      report << song.name << delimeter << song.length << "\n";
+
+      if (report.bad()) {
+	cerr << "Write failed in: " << songs_report_name;
+        database.close();
+	report.close();
+	return ERROR_WRITING_FILE;
+      }
+    }
+  }
+
+  database.close();
+  report.close();
+
+  return ERROR_OPENING_FILE;
 }
 
 int main() {  
-  const char *file_name = "songs.bin";
+  const char *db_name = "songs.db";
 
   int songs_count;
   cout << "Enter number of songs to be stored: ";
@@ -99,21 +202,22 @@ int main() {
     cin.ignore();
     cin.getline(song.name, 50);
     cin >> song.length;
-    WriteSongToFile(song, file_name);
+    write_song(song, db_name);
   }
 
   Song song;
 
-  char name[50];
-  cin.ignore();
-  cin.getline(name, 50);
-  
-  if(SearchSongByName(song, file_name, name) == SUCCESS) {
-    cout << "Song name: "   << song.name;
-    cout << "Song length: " << song.length;
+  if(find_min_length_song(song, db_name) == SUCCESS) {
+    cout << "Minimum length song info: \n";
+    cout << "Song name: " << song.name << "\n";
+    cout << "Song length: " << song.length << "\n";
   } else {
-    cout << "Song " << name << " not found in the database :( \n";
+    cout << "Failure reading from " << db_name << "\n";
   }
+
+  const char* report_name = "songs.csv";
+
+  generate_report(db_name, report_name, ',');
   
   return 0;
 }
